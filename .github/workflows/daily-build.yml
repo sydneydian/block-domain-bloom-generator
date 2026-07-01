@@ -1,0 +1,72 @@
+name: Daily Bloom Filter Build
+
+on:
+  # 每天 UTC 时间 02:00 运行（北京时间 10:00）
+  schedule:
+    - cron: '0 2 * * *'
+
+  # 允许手动触发
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate bloom filter
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node index.js
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Check if release exists
+        id: check_release
+        run: |
+          if gh release view "${{ steps.date.outputs.date }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Delete existing release if exists
+        if: steps.check_release.outputs.exists == 'true'
+        run: gh release delete "${{ steps.date.outputs.date }}" --yes
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.date.outputs.date }}
+          name: Domain Bloom Filter - ${{ steps.date.outputs.date }}
+          body: |
+            自动生成的域名布隆过滤器
+
+            **数据源:**
+            - GFWList
+            - StevenBlack Hosts
+            - Cloudflare Radar Top 5000
+
+            **生成时间:** ${{ steps.date.outputs.date }}
+          files: bloom-filter.json
+          draft: false
+          prerelease: false

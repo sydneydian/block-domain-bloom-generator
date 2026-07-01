@@ -1,0 +1,22 @@
+{
+  "name": "domain-bloom-filter",
+  "version": "1.0.0",
+  "description": "Daily domain bloom filter generator from multiple sources",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "bloom-filter",
+    "domain",
+    "gfwlist",
+    "cloudflare-radar"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "bloom-filters": "^3.0.2"
+  }
+}
