@@ -1,4 +1,5 @@
-import { BloomFilter } from 'bloom-filters';
+import pkg from 'bloom-filters';
+const { BloomFilter } = pkg;
 import { writeFileSync } from 'fs';
 
 // ==================== 工具函数 ====================
