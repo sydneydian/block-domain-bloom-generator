@@ -12,7 +12,7 @@
     "bloom-filter",
     "domain",
     "gfwlist",
-    "cloudflare-radar"
+    "tranco"
   ],
   "author": "",
   "license": "MIT",

@@ -28,8 +28,6 @@ jobs:
         run: npm ci
 
       - name: Generate bloom filter
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: node index.js
 
       - name: Get current date
@@ -49,7 +47,7 @@ jobs:
 
       - name: Delete existing release if exists
         if: steps.check_release.outputs.exists == 'true'
-        run: gh release delete "${{ steps.date.outputs.date }}" --yes
+        run: gh release delete "${{ steps.date.outputs.date }}" --yes --cleanup-tag
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -64,7 +62,7 @@ jobs:
             **数据源:**
             - GFWList
             - StevenBlack Hosts
-            - Cloudflare Radar Top 5000
+            - Tranco Top 5000
 
             **生成时间:** ${{ steps.date.outputs.date }}
           files: bloom-filter.json

@@ -6,7 +6,6 @@ import { writeFileSync } from 'fs';
 
 /**
  * 从 GFWList 清洗域名（Base64 编码）
- * 参考 tmp.js 中的处理逻辑
  */
 function cleanGfwLine(line) {
   line = line.trim();
@@ -143,52 +142,57 @@ async function fetchStevenBlackHosts() {
 }
 
 /**
- * 获取 Cloudflare Radar Top 5000 域名
+ * 获取 Tranco Top 5000 域名
+ * Tranco 是一个抗操纵的研究型网站排名榜（https://tranco-list.eu）
+ * 流程：先请求最新榜单元数据拿到 list_id，再按 /download/{list_id}/5000 下载前 5000 名
+ * CSV 格式为 "rank,domain"，无需认证
  */
-async function fetchCloudflareRadar() {
-  console.log('📡 Fetching Cloudflare Radar Top 5000...');
+async function fetchTranco() {
+  console.log('📡 Fetching Tranco Top 5000...');
 
-  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
-  if (!apiToken) {
-    console.error('❌ CLOUDFLARE_API_TOKEN not set in environment');
-    return new Set();
-  }
-
-  const url = 'https://api.cloudflare.com/client/v4/radar/ranking/top?limit=5000&name=top';
+  const TOP_N = 5000;
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${apiToken}`
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    // 1. 获取最新榜单元数据
+    const metaResp = await fetch('https://tranco-list.eu/api/lists/date/latest');
+    if (!metaResp.ok) {
+      throw new Error(`HTTP error fetching list metadata! status: ${metaResp.status}`);
     }
 
-    const data = await response.json();
-
-    if (!data.success) {
-      throw new Error('Cloudflare API returned success: false');
+    const meta = await metaResp.json();
+    const listId = meta.list_id;
+    if (!listId) {
+      throw new Error(`No list_id in Tranco response: ${JSON.stringify(meta)}`);
     }
+
+    // 2. 下载前 5000 名（把下载路径末尾的数量替换为 5000）
+    const downloadUrl = `https://tranco-list.eu/download/${listId}/${TOP_N}`;
+    const csvResp = await fetch(downloadUrl);
+    if (!csvResp.ok) {
+      throw new Error(`HTTP error downloading list! status: ${csvResp.status}`);
+    }
+
+    const csvText = await csvResp.text();
+    const lines = csvText.split('\n');
 
     const domains = new Set();
-    // API 返回的格式是 result.top_0 数组，每个元素可能是对象或字符串
-    const topDomains = data.result?.top_0 || [];
+    const domainRegex = /^[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,}$/i;
 
-    for (const item of topDomains) {
-      // 如果是对象，可能包含 domain 字段；如果是字符串，直接使用
-      const domain = typeof item === 'string' ? item : (item.domain || item.name);
-      if (domain && typeof domain === 'string') {
-        domains.add(domain.toLowerCase().trim());
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      // 格式："rank,domain"，取逗号后的域名部分
+      const parts = line.split(',');
+      const domain = (parts[1] || parts[0]).toLowerCase().trim();
+      if (domainRegex.test(domain)) {
+        domains.add(domain);
       }
     }
 
-    console.log(`✅ Cloudflare Radar: ${domains.size} domains`);
+    console.log(`✅ Tranco: ${domains.size} domains (list ${listId})`);
     return domains;
   } catch (error) {
-    console.error('❌ Error fetching Cloudflare Radar:', error.message);
+    console.error('❌ Error fetching Tranco:', error.message);
     return new Set();
   }
 }
@@ -199,17 +203,17 @@ async function main() {
   console.log('🚀 Starting domain bloom filter generation...\n');
 
   // 并行获取所有数据源
-  const [gfwDomains, hostsDomains, radarDomains] = await Promise.all([
+  const [gfwDomains, hostsDomains, trancoDomains] = await Promise.all([
     fetchGfwlist(),
     fetchStevenBlackHosts(),
-    fetchCloudflareRadar()
+    fetchTranco()
   ]);
 
   // 合并所有域名
   const allDomains = new Set([
     ...gfwDomains,
     ...hostsDomains,
-    ...radarDomains
+    ...trancoDomains
   ]);
 
   console.log(`\n📊 Total unique domains: ${allDomains.size}`);
@@ -244,7 +248,7 @@ async function main() {
       sources: {
         gfwlist: gfwDomains.size,
         stevenBlackHosts: hostsDomains.size,
-        cloudflareRadar: radarDomains.size
+        tranco: trancoDomains.size
       },
       bloomFilter: {
         size: filter._size,
